@@ -85,7 +85,7 @@ RUN sed -i \
     -e "s|http://deb.debian.org/debian|${APT_MIRROR}|g" \
     -e "s|http://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
     /etc/apt/sources.list.d/debian.sources && \
-    apt update && apt install -y curl sudo postgresql-client && apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+    apt update && apt install -y curl sudo postgresql-client openssh-client && apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 RUN npm config set registry "${NPM_REGISTRY}"
 # Update npm to latest version to suppress update notices
 RUN npm install -g npm@latest
