@@ -1,8 +1,18 @@
 ARG NODEJS_IMAGE=node:24-bookworm-slim
 FROM --platform=$BUILDPLATFORM $NODEJS_IMAGE AS base
+ARG APT_MIRROR=http://mirrors.aliyun.com/debian
+ARG APT_SECURITY_MIRROR=http://mirrors.aliyun.com/debian-security
+RUN sed -i \
+    -e "s|http://deb.debian.org/debian|${APT_MIRROR}|g" \
+    -e "s|http://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+    /etc/apt/sources.list.d/debian.sources && \
+    apt update && apt install -y openssl && apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Install dependencies only when needed
 FROM base AS deps
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+ARG PRISMA_ENGINES_MIRROR=https://cdn.npmmirror.com/binaries/prisma
+ENV PRISMA_ENGINES_MIRROR=${PRISMA_ENGINES_MIRROR}
 
 # RUN apt update && apt install libc6-compat
 WORKDIR /app
@@ -10,13 +20,14 @@ WORKDIR /app
 # Install Prisma Client - remove if not using Prisma
 COPY package.json yarn.lock* package-lock.json* pnpm-lock.yaml* ./
 COPY prisma ./
+RUN npm config set registry "${NPM_REGISTRY}"
 RUN npx prisma@6.16.3 generate
 
 # Install dependencies based on the preferred package manager
 RUN \
-    if [ -f yarn.lock ]; then yarn --frozen-lockfile; \
+    if [ -f yarn.lock ]; then yarn config set registry "${NPM_REGISTRY}" && yarn --frozen-lockfile; \
     elif [ -f package-lock.json ]; then npm ci; \
-    elif [ -f pnpm-lock.yaml ]; then yarn global add pnpm && pnpm i --frozen-lockfile; \
+    elif [ -f pnpm-lock.yaml ]; then yarn config set registry "${NPM_REGISTRY}" && yarn global add pnpm && pnpm config set registry "${NPM_REGISTRY}" && pnpm i --frozen-lockfile; \
     else echo "Lockfile not found." && exit 1; \
     fi
 
@@ -54,6 +65,10 @@ WORKDIR /app
 # used in the init-db.sh script
 ARG NEXTAUTH_URL
 ARG NEXTAUTH_SECRET
+ARG APT_MIRROR=http://mirrors.aliyun.com/debian
+ARG APT_SECURITY_MIRROR=http://mirrors.aliyun.com/debian-security
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+ARG PRISMA_ENGINES_MIRROR=https://cdn.npmmirror.com/binaries/prisma
 
 ARG NEXT_PUBLIC_APP_VERSION
 ENV NEXT_PUBLIC_APP_VERSION=${NEXT_PUBLIC_APP_VERSION}
@@ -62,10 +77,16 @@ ENV NODE_ENV=production
 
 # Disable telemetry during runtime.
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV PRISMA_ENGINES_MIRROR=${PRISMA_ENGINES_MIRROR}
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
-RUN apt update && apt install -y curl sudo postgresql-client && apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+RUN sed -i \
+    -e "s|http://deb.debian.org/debian|${APT_MIRROR}|g" \
+    -e "s|http://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+    /etc/apt/sources.list.d/debian.sources && \
+    apt update && apt install -y curl sudo postgresql-client && apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+RUN npm config set registry "${NPM_REGISTRY}"
 # Update npm to latest version to suppress update notices
 RUN npm install -g npm@latest
 # need to install these package for seeding the database

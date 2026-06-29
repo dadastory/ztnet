@@ -14,6 +14,7 @@
 
 # next.js
 /.next/
+/.next.*
 /out/
 next-env.d.ts
 
@@ -21,6 +22,8 @@ next-env.d.ts
 /build
 
 # misc
+.data/
+.idea/
 .DS_Store
 *.pem
 
