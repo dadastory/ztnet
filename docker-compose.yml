@@ -12,23 +12,23 @@ services:
     networks:
       - ztnet-local
 
-  zerotier:
-    image: ${ZEROTIER_IMAGE-zyclonite/zerotier:1.14.2}
-    hostname: zerotier
-    container_name: ztnet-local-zerotier
-    restart: unless-stopped
-    volumes:
-      - ./.data/zerotier:/var/lib/zerotier-one
-    cap_add:
-      - NET_ADMIN
-      - SYS_ADMIN
-    devices:
-      - /dev/net/tun:/dev/net/tun
-    networks:
-      - ztnet-local
-    environment:
-      - ZT_OVERRIDE_LOCAL_CONF=true
-      - ZT_ALLOW_MANAGEMENT_FROM=172.31.254.0/29
+#  zerotier:
+#    image: ${ZEROTIER_IMAGE-zyclonite/zerotier:1.14.2}
+#    hostname: zerotier
+#    container_name: ztnet-local-zerotier
+#    restart: unless-stopped
+#    volumes:
+#      - ./.data/zerotier:/var/lib/zerotier-one
+#    cap_add:
+#      - NET_ADMIN
+#      - SYS_ADMIN
+#    devices:
+#      - /dev/net/tun:/dev/net/tun
+#    networks:
+#      - ztnet-local
+#    environment:
+#      - ZT_OVERRIDE_LOCAL_CONF=true
+#      - ZT_ALLOW_MANAGEMENT_FROM=172.31.254.0/29
 
   ztnet:
     build:
@@ -45,9 +45,9 @@ services:
     working_dir: /app
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "9000:3000"
     volumes:
-      - ./.data/zerotier:/var/lib/zerotier-one
+      - /var/lib/zerotier-one:/var/lib/zerotier-one
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -55,20 +55,23 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: ztnet
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ztnet
-      NEXTAUTH_URL: http://localhost:3000
-      NEXTAUTH_SECRET: ztnet_local_development_secret_32_chars
+      NEXTAUTH_URL: http://192.168.10.48:9000
+      NEXTAUTH_SECRET: 7e56c614e645f67e4cbef38f2a7cf2ac280f03ca12f6141e8d01f90a69736218
       NEXTAUTH_URL_INTERNAL: http://ztnet:3000
-      ZT_ADDR: http://zerotier:9993
+      ZT_ADDR: http://host.docker.internal:9993
+      ZT_SECRET: djlzb4wad3l0hu0afr1lp6lm
     networks:
       - ztnet-local
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - postgres
-      - zerotier
+#      - zerotier
 
 networks:
   ztnet-local:
     driver: bridge
-    ipam:
-      driver: default
-      config:
-        - subnet: 172.31.254.0/29
+#    ipam:
+#      driver: default
+#      config:
+#        - subnet: 172.31.254.0/29
