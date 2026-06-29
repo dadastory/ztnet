@@ -55,7 +55,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: ztnet
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ztnet
-      NEXTAUTH_URL: http://192.168.10.48:9000
+      NEXTAUTH_URL: https://planet.dadastory.com
       NEXTAUTH_SECRET: 7e56c614e645f67e4cbef38f2a7cf2ac280f03ca12f6141e8d01f90a69736218
       NEXTAUTH_URL_INTERNAL: http://ztnet:3000
       ZT_ADDR: http://host.docker.internal:9993
