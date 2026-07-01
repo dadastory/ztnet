@@ -831,6 +831,15 @@
 				"downloadAuthRestApiHint": "Requires an admin personal REST API token in x-ztnet-auth."
 			},
 			"remoteRoots": {
+				"clientInstall": {
+					"title": "Команда встановлення клієнта",
+					"description": "Виконайте на клієнті, щоб встановити ZeroTier і цей кастомний planet за один крок.",
+					"unixLabel": "Linux / macOS / ARM / роутер",
+					"windowsLabel": "Windows (PowerShell від адміна)",
+					"copy": "Копіювати",
+					"copied": "Скопійовано",
+					"note": "Перше приєднання потребує одного запуску; подальші оновлення planet застосовуються автоматично."
+				},
 				"title": "Віддалені Planet Roots",
 				"description": "Керуйте віддаленими root-вузлами ZeroTier для створення користувацького planet.",
 				"actions": {
