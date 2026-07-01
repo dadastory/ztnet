@@ -1216,7 +1216,12 @@ const RemoteRoots = () => {
 									>
 										{statusLabel("panel", selectedRoot.panelStatus)}
 									</span>
-									<span className="badge badge-outline">
+									<span
+										className={`badge ${
+											planetStatusClassName[normalizeStatus(selectedRoot.planetStatus)] ??
+											"badge-neutral"
+										}`}
+									>
 										{statusLabel("planet", selectedRoot.planetStatus)}
 									</span>
 									{hasRunningHealthTask(selectedRoot) ? (
