@@ -831,6 +831,15 @@
 				}
 			},
 			"remoteRoots": {
+				"clientInstall": {
+					"title": "Client install command",
+					"description": "Run on a client to install ZeroTier and this custom planet in one step.",
+					"unixLabel": "Linux / macOS / ARM / soft-router",
+					"windowsLabel": "Windows (PowerShell as Admin)",
+					"copy": "Copy",
+					"copied": "Copied",
+					"note": "First-time join must run this once; later planet updates are picked up automatically."
+				},
 				"title": "Remote Planet Roots",
 				"description": "Manage remote ZeroTier root nodes for custom planet generation.",
 				"actions": {
