@@ -73,6 +73,16 @@ const splitStatusClassName = {
 	ERROR: "badge-error",
 };
 
+const planetStatusClassName = {
+	UNKNOWN: "badge-neutral",
+	MISSING: "badge-error",
+	CUSTOM_MATCH: "badge-success",
+	CUSTOM_OTHER: "badge-warning",
+	OFFICIAL_RESTORED: "badge-neutral",
+	OFFICIAL_OR_DEFAULT: "badge-neutral",
+	OFFICIAL_OR_UNKNOWN: "badge-neutral",
+};
+
 const taskClassName = {
 	PENDING: "badge-neutral",
 	RUNNING: "badge-info",
@@ -751,6 +761,14 @@ const RemoteRoots = () => {
 														className={`badge ${splitStatusClassName[normalizeStatus(root.panelStatus)]}`}
 													>
 														{statusLabel("panel", root.panelStatus)}
+													</span>
+													<span
+														className={`badge ${
+															planetStatusClassName[normalizeStatus(root.planetStatus)] ??
+															"badge-neutral"
+														}`}
+													>
+														{statusLabel("planet", root.planetStatus)}
 													</span>
 													{hasRunningHealthTask(root) ? (
 														<span className="badge badge-info gap-1">
