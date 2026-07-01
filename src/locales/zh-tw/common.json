@@ -916,9 +916,9 @@
 					},
 					"planet": {
 						"UNKNOWN": "Planet 未知",
-						"MISSING": "Planet 缺失",
-						"CUSTOM_MATCH": "自訂 planet",
-						"CUSTOM_OTHER": "其他自訂 planet",
+						"MISSING": "planet 未安裝",
+						"CUSTOM_MATCH": "planet 最新",
+						"CUSTOM_OTHER": "planet 需更新",
 						"OFFICIAL_RESTORED": "官方 planet",
 						"OFFICIAL_OR_DEFAULT": "官方或預設 planet",
 						"OFFICIAL_OR_UNKNOWN": "官方或未知 planet"
