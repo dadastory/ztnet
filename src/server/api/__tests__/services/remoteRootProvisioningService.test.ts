@@ -5,13 +5,16 @@ import {
 	buildRestoreOfficialPlanetCommand,
 	parseRestoreOfficialPlanetMode,
 	parseRemoteRootConfig,
+	REMOTE_ROOT_COMMANDS,
 } from "~/server/api/services/remoteRootProvisioningService";
 
 describe("remoteRootProvisioningService", () => {
 	it("parses remote ZeroTier state, IP candidates, and planet hashes", () => {
-		const config = parseRemoteRootConfig(
-			[
-				"__ZTNET_INSTALLED__",
+	const config = parseRemoteRootConfig(
+		[
+			"__ZTNET_DEPLOYMENT__",
+			"NATIVE",
+			"__ZTNET_INSTALLED__",
 				"yes",
 				"__ZTNET_SERVICE__",
 				"active",
@@ -26,15 +29,14 @@ describe("remoteRootProvisioningService", () => {
 				"__ZTNET_INTERFACE_IPS__",
 				"10.8.0.5",
 				"2001:db8::5",
-				"__ZTNET_PUBLIC_IPS__",
-				"203.0.113.20",
-				"__ZTNET_PLANET__",
+			"__ZTNET_PLANET__",
 				"planet abc123",
 				"backup def456",
 			].join("\n"),
 		);
 
 		expect(config.zerotierInstalled).toBe(true);
+		expect(config.deploymentMode).toBe("NATIVE");
 		expect(config.serviceStatus).toBe("RUNNING");
 		expect(config.startupStatus).toBe("ENABLED");
 		expect(config.zerotierVersion).toBe("1.16.2");
@@ -51,7 +53,6 @@ describe("remoteRootProvisioningService", () => {
 		expect(config.endpointCandidates).toEqual([
 			{ ip: "10.8.0.5", source: "INTERFACE_IP", port: 10001 },
 			{ ip: "2001:db8::5", source: "INTERFACE_IP", port: 10001 },
-			{ ip: "203.0.113.20", source: "PUBLIC_IP", port: 10001 },
 		]);
 		expect(config.remotePlanetHash).toBe("abc123");
 		expect(config.remoteOfficialPlanetHash).toBe("def456");
@@ -59,8 +60,10 @@ describe("remoteRootProvisioningService", () => {
 
 	it("uses zerotier-one.port when local.conf does not define a primary port", () => {
 		const config = parseRemoteRootConfig(
-			[
-				"__ZTNET_INSTALLED__",
+		[
+			"__ZTNET_DEPLOYMENT__",
+			"NATIVE",
+			"__ZTNET_INSTALLED__",
 				"yes",
 				"__ZTNET_SERVICE__",
 				"active",
@@ -76,9 +79,7 @@ describe("remoteRootProvisioningService", () => {
 				"10001",
 				"__ZTNET_INTERFACE_IPS__",
 				"10.8.0.5",
-				"__ZTNET_PUBLIC_IPS__",
-				"203.0.113.20",
-				"__ZTNET_PLANET__",
+			"__ZTNET_PLANET__",
 				"planet abc123",
 				"backup def456",
 			].join("\n"),
@@ -86,16 +87,18 @@ describe("remoteRootProvisioningService", () => {
 
 		expect(config.primaryPort).toBe(10001);
 		expect(config.endpointCandidates).toContainEqual({
-			ip: "203.0.113.20",
-			source: "PUBLIC_IP",
+			ip: "10.8.0.5",
+			source: "INTERFACE_IP",
 			port: 10001,
 		});
 	});
 
 	it("prefers local.conf primaryPort over zerotier-one.port", () => {
 		const config = parseRemoteRootConfig(
-			[
-				"__ZTNET_INSTALLED__",
+		[
+			"__ZTNET_DEPLOYMENT__",
+			"NATIVE",
+			"__ZTNET_INSTALLED__",
 				"yes",
 				"__ZTNET_SERVICE__",
 				"active",
@@ -111,15 +114,45 @@ describe("remoteRootProvisioningService", () => {
 				"10001",
 				"__ZTNET_INTERFACE_IPS__",
 				"10.8.0.5",
-				"__ZTNET_PUBLIC_IPS__",
-				"203.0.113.20",
-				"__ZTNET_PLANET__",
+			"__ZTNET_PLANET__",
 				"planet abc123",
 				"backup def456",
 			].join("\n"),
 		);
 
 		expect(config.primaryPort).toBe(10002);
+	});
+
+	it("recognizes Docker deployments without a native service", () => {
+		const config = parseRemoteRootConfig(
+			[
+				"__ZTNET_DEPLOYMENT__",
+				"DOCKER",
+				"__ZTNET_INSTALLED__",
+				"no",
+				"__ZTNET_SERVICE__",
+				"__ZTNET_STARTUP__",
+				"__ZTNET_IDENTITY__",
+				"685a4651a7:0:755f89d16ea85e0f5a9db1cdd7f4846b73b193378cc17600a7261053409f08299f6cb516dfd566359c48073af8b6ae831f996745d5e10d18dc4dd487b8ad11e3",
+				"__ZTNET_INFO__",
+				"__ZTNET_LOCAL_CONF__",
+				"__ZTNET_PORT__",
+				"9993",
+				"__ZTNET_INTERFACE_IPS__",
+				"10.8.0.5",
+				"__ZTNET_PLANET__",
+			].join("\n"),
+		);
+
+		expect(config.deploymentMode).toBe("DOCKER");
+		expect(config.zerotierInstalled).toBe(true);
+		expect(config.serviceStatus).toBe("RUNNING");
+	});
+
+	it("does not probe external public IP APIs while reading remote config", () => {
+		expect(REMOTE_ROOT_COMMANDS.readConfig).not.toContain("curl");
+		expect(REMOTE_ROOT_COMMANDS.readConfig).not.toContain("ipify");
+		expect(REMOTE_ROOT_COMMANDS.readConfig).not.toContain("__ZTNET_PUBLIC_IPS__");
 	});
 
 	it("builds a port change command that writes local.conf and restarts ZeroTier", () => {
@@ -129,6 +162,13 @@ describe("remoteRootProvisioningService", () => {
 		expect(command).toContain("primaryPort");
 		expect(command).toContain("10001");
 		expect(command).toContain("restart zerotier-one");
+	});
+
+	it("omits service restart from Docker write commands", () => {
+		const command = buildChangeZerotierPortCommand(10001, { restartService: false });
+
+		expect(command).not.toContain("systemctl restart");
+		expect(command).not.toContain("service zerotier-one restart");
 	});
 
 	it("writes portMappingEnabled false when secondary listening ports are disabled", () => {

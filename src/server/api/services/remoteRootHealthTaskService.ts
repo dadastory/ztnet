@@ -105,6 +105,7 @@ export async function runRemoteRootHealthCheckTask({
 				selectedIps: result.selectedIps,
 				endpointCandidates: result.endpointCandidates,
 				zerotierInstalled: result.zerotierInstalled,
+				deploymentMode: result.deploymentMode,
 				serviceStatus: result.serviceStatus,
 				startupStatus: result.startupStatus,
 				secondaryPort: result.secondaryPort,

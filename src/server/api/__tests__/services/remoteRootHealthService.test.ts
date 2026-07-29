@@ -29,6 +29,8 @@ describe("remoteRootHealthService", () => {
 			}
 			return {
 				stdout: [
+					"__ZTNET_DEPLOYMENT__",
+					"NATIVE",
 					"__ZTNET_INSTALLED__",
 					"yes",
 					"__ZTNET_SERVICE__",
@@ -43,8 +45,6 @@ describe("remoteRootHealthService", () => {
 					'{"settings":{"primaryPort":10001}}',
 					"__ZTNET_INTERFACE_IPS__",
 					"10.0.0.8",
-					"__ZTNET_PUBLIC_IPS__",
-					"203.0.113.20",
 					"__ZTNET_PLANET__",
 					"planet abc123",
 				].join("\n"),
@@ -64,10 +64,9 @@ describe("remoteRootHealthService", () => {
 		expect(result.panelStatus).toBe("OK");
 		expect(result.startupStatus).toBe("ENABLED");
 		expect(result.primaryPort).toBe(10001);
-		expect(result.selectedIp).toBe("203.0.113.20");
+		expect(result.selectedIp).toBe("203.0.113.10");
 		expect(result.endpointCandidates).toEqual([
 			{ ip: "10.0.0.8", source: "INTERFACE_IP", port: 10001 },
-			{ ip: "203.0.113.20", source: "PUBLIC_IP", port: 10001 },
 			{ ip: "203.0.113.10", source: "SSH_HOST", port: 10001 },
 		]);
 		expect(result.lastError).toBeNull();
@@ -81,6 +80,8 @@ describe("remoteRootHealthService", () => {
 			}
 			return {
 				stdout: [
+					"__ZTNET_DEPLOYMENT__",
+					"NATIVE",
 					"__ZTNET_INSTALLED__",
 					"yes",
 					"__ZTNET_SERVICE__",
@@ -95,8 +96,6 @@ describe("remoteRootHealthService", () => {
 					'{"settings":{"primaryPort":9993}}',
 					"__ZTNET_INTERFACE_IPS__",
 					"10.0.0.8",
-					"__ZTNET_PUBLIC_IPS__",
-					"203.0.113.20",
 					"__ZTNET_PLANET__",
 					"planet abc123",
 				].join("\n"),

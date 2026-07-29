@@ -20,6 +20,36 @@ export type SshCommandResult = {
 	stderr: string;
 };
 
+type ExecFileFailure = Error & {
+	code?: number | string | null;
+	killed?: boolean;
+	signal?: string | null;
+	stderr?: string;
+};
+
+export class RemoteRootSshError extends Error {
+	readonly stderr: string;
+	readonly code: number | string | null;
+	readonly timedOut: boolean;
+
+	constructor({ stderr, code, timedOut }: {
+		stderr: string;
+		code: number | string | null;
+		timedOut: boolean;
+	}) {
+		const detail = stderr.trim();
+		super(
+			timedOut
+				? "SSH command timed out after 30 seconds."
+				: detail || `SSH command failed${code === null ? "." : ` with exit code ${code}.`}`,
+		);
+		this.name = "RemoteRootSshError";
+		this.stderr = detail;
+		this.code = code;
+		this.timedOut = timedOut;
+	}
+}
+
 export function buildSshArgs({
 	host,
 	port,
@@ -66,14 +96,23 @@ export async function executeSshCommand(
 	input: Omit<SshCommandInput, "identityFile"> & { privateKey: string },
 ): Promise<SshCommandResult> {
 	return await withTempIdentityFile(input.privateKey, async (identityFile) => {
-		const { stdout, stderr } = await execFileAsync(
-			"ssh",
-			buildSshArgs({ ...input, identityFile }),
-			{
-				timeout: 30_000,
-				maxBuffer: 1024 * 1024,
-			},
-		);
-		return { stdout, stderr };
+		try {
+			const { stdout, stderr } = await execFileAsync(
+				"ssh",
+				buildSshArgs({ ...input, identityFile }),
+				{
+					timeout: 30_000,
+					maxBuffer: 1024 * 1024,
+				},
+			);
+			return { stdout, stderr };
+		} catch (error) {
+			const failure = error as ExecFileFailure;
+			throw new RemoteRootSshError({
+				stderr: failure.stderr || "",
+				code: failure.code ?? null,
+				timedOut: Boolean(failure.killed || failure.signal === "SIGTERM"),
+			});
+		}
 	});
 }

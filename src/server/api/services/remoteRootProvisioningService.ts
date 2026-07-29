@@ -11,6 +11,7 @@ export type RemoteRootConnection = {
 };
 
 export type RemoteRootConfig = {
+	deploymentMode: RemoteRootDeploymentMode;
 	identity: string | null;
 	primaryPort: number;
 	secondaryPort: number | null;
@@ -34,8 +35,14 @@ export type RemoteRootConfig = {
 
 export type RemoteRootEndpointCandidate = {
 	ip: string;
-	source: "SSH_HOST" | "PUBLIC_IP" | "INTERFACE_IP" | "DNS";
+	source: "SSH_HOST" | "INTERFACE_IP" | "DNS";
 	port: number;
+};
+
+export type RemoteRootDeploymentMode = "NATIVE" | "DOCKER" | "UNSUPPORTED";
+
+export type RemoteRootWriteCommandOptions = {
+	restartService?: boolean;
 };
 
 export type RemoteRootLocalConfigInput = {
@@ -52,12 +59,16 @@ export type RemoteRootLocalConfigInput = {
 
 const readCommand = [
 	"set -e",
+	"ztnet_deployment=UNSUPPORTED",
+	"if command -v zerotier-cli >/dev/null 2>&1 && { [ -d /run/systemd/system ] || command -v service >/dev/null 2>&1; }; then ztnet_deployment=NATIVE; elif command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}} {{.Image}}' 2>/dev/null | grep -qi zerotier && [ -d /var/lib/zerotier-one ] && [ -w /var/lib/zerotier-one ]; then ztnet_deployment=DOCKER; fi",
+	"echo __ZTNET_DEPLOYMENT__",
+	"echo $ztnet_deployment",
 	"echo __ZTNET_INSTALLED__",
 	"if command -v zerotier-cli >/dev/null 2>&1; then echo yes; else echo no; fi",
 	"echo __ZTNET_SERVICE__",
-	"(systemctl is-active zerotier-one 2>/dev/null || service zerotier-one status 2>/dev/null | head -n 1 || true)",
+	"if [ \"$ztnet_deployment\" = NATIVE ]; then (systemctl is-active zerotier-one 2>/dev/null || service zerotier-one status 2>/dev/null | head -n 1 || true); fi",
 	"echo __ZTNET_STARTUP__",
-	"(systemctl is-enabled zerotier-one 2>/dev/null || true)",
+	"if [ \"$ztnet_deployment\" = NATIVE ]; then (systemctl is-enabled zerotier-one 2>/dev/null || true); fi",
 	"echo __ZTNET_IDENTITY__",
 	"sudo cat /var/lib/zerotier-one/identity.public 2>/dev/null || cat /var/lib/zerotier-one/identity.public 2>/dev/null || true",
 	"echo __ZTNET_INFO__",
@@ -69,9 +80,6 @@ const readCommand = [
 	"echo __ZTNET_INTERFACE_IPS__",
 	"(ip -o -4 addr show scope global 2>/dev/null | awk '{split($4,a,\"/\"); print a[1]}' || true)",
 	"(ip -o -6 addr show scope global 2>/dev/null | awk '{split($4,a,\"/\"); print a[1]}' || true)",
-	"echo __ZTNET_PUBLIC_IPS__",
-	"(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || true)",
-	"(curl -fsS --max-time 5 https://api64.ipify.org 2>/dev/null || true)",
 	"echo __ZTNET_PLANET__",
 	"if [ -f /var/lib/zerotier-one/planet ]; then printf 'planet '; sha256sum /var/lib/zerotier-one/planet | awk '{print $1}'; else echo 'planet missing'; fi",
 	"if [ -f /var/lib/zerotier-one/planet.ztnet.official.bak ]; then printf 'backup '; sha256sum /var/lib/zerotier-one/planet.ztnet.official.bak | awk '{print $1}'; else echo 'backup missing'; fi",
@@ -112,6 +120,9 @@ function readSection(output: string, marker: string, nextMarker?: string): strin
 }
 
 export function parseRemoteRootConfig(output: string): RemoteRootConfig {
+	const deploymentMode = parseDeploymentMode(
+		readSection(output, "__ZTNET_DEPLOYMENT__", "__ZTNET_INSTALLED__"),
+	);
 	const installed = readSection(output, "__ZTNET_INSTALLED__", "__ZTNET_SERVICE__")
 		.trim()
 		.toLowerCase();
@@ -194,16 +205,14 @@ export function parseRemoteRootConfig(output: string): RemoteRootConfig {
 			?.trim() || null;
 
 	const interfaceIps = parseIps(
-		readSection(output, "__ZTNET_INTERFACE_IPS__", "__ZTNET_PUBLIC_IPS__"),
-	);
-	const publicIps = parseIps(
-		readSection(output, "__ZTNET_PUBLIC_IPS__", "__ZTNET_PLANET__"),
+		readSection(output, "__ZTNET_INTERFACE_IPS__", "__ZTNET_PLANET__"),
 	);
 	const planet = readSection(output, "__ZTNET_PLANET__");
 	const remotePlanetHash = readHashLine(planet, "planet");
 	const remoteOfficialPlanetHash = readHashLine(planet, "backup");
 
 	return {
+		deploymentMode,
 		identity,
 		primaryPort,
 		secondaryPort,
@@ -219,7 +228,7 @@ export function parseRemoteRootConfig(output: string): RemoteRootConfig {
 		rawLocalConf,
 		zerotierInstalled: installed === "yes" || Boolean(version || identity),
 		serviceStatus:
-			serviceText.includes("active") || info.includes("ONLINE")
+			deploymentMode === "DOCKER" || serviceText.includes("active") || info.includes("ONLINE")
 				? "RUNNING"
 				: serviceText.includes("inactive") || serviceText.includes("stopped")
 					? "STOPPED"
@@ -233,15 +242,15 @@ export function parseRemoteRootConfig(output: string): RemoteRootConfig {
 				source: "INTERFACE_IP" as const,
 				port: primaryPort,
 			})),
-			...publicIps.map((ip) => ({
-				ip,
-				source: "PUBLIC_IP" as const,
-				port: primaryPort,
-			})),
 		],
 		remotePlanetHash,
 		remoteOfficialPlanetHash,
 	};
+}
+
+function parseDeploymentMode(value: string): RemoteRootDeploymentMode {
+	const normalized = value.trim().toUpperCase();
+	return normalized === "NATIVE" || normalized === "DOCKER" ? normalized : "UNSUPPORTED";
 }
 
 function parseStartupStatus(value: string): RemoteRootConfig["startupStatus"] {
@@ -314,7 +323,19 @@ export function buildManualIpPlanetEntry({
 	return buildRemoteRootPlanetEntry({ name, identity, selectedIp, primaryPort });
 }
 
-export function buildChangeZerotierPortCommand(port: number): string {
+function appendOptionalRestart(
+	commands: string[],
+	options: RemoteRootWriteCommandOptions = {},
+): string {
+	return options.restartService === false
+		? commands.join(" && ")
+		: [...commands, REMOTE_ROOT_COMMANDS.restartService].join(" && ");
+}
+
+export function buildChangeZerotierPortCommand(
+	port: number,
+	options: RemoteRootWriteCommandOptions = {},
+): string {
 	if (!Number.isInteger(port) || port < 1 || port > 65535) {
 		throw new Error("ZeroTier port must be between 1 and 65535.");
 	}
@@ -327,11 +348,15 @@ export function buildChangeZerotierPortCommand(port: number): string {
 		"p.write_text(json.dumps(d,indent=2))",
 	].join("; ");
 	const fallback = `printf '%s' '{"settings":{"primaryPort":${port}}}' | sudo tee /var/lib/zerotier-one/local.conf >/dev/null`;
-	return `sudo mkdir -p /var/lib/zerotier-one && (sudo python3 -c '${python}' || ${fallback}) && ${REMOTE_ROOT_COMMANDS.restartService}`;
+	return appendOptionalRestart([
+		"sudo mkdir -p /var/lib/zerotier-one",
+		`(sudo python3 -c '${python}' || ${fallback})`,
+	], options);
 }
 
 export function buildSaveRemoteRootConfigCommand(
 	config: RemoteRootLocalConfigInput,
+	options: RemoteRootWriteCommandOptions = {},
 ): string {
 	if (!isValidPort(config.primaryPort)) {
 		throw new Error("ZeroTier port must be between 1 and 65535.");
@@ -368,11 +393,10 @@ export function buildSaveRemoteRootConfigCommand(
 			"p.write_text(json.dumps(d,indent=2))",
 		].join("; "),
 	);
-	return [
+	return appendOptionalRestart([
 		"sudo mkdir -p /var/lib/zerotier-one",
 		`printf '%s' ${payload} | sudo python3 -c ${python}`,
-		REMOTE_ROOT_COMMANDS.restartService,
-	].join(" && ");
+	], options);
 }
 
 function normalizeStringList(value: string[] | undefined): string[] {
@@ -398,23 +422,26 @@ function shellSingleQuote(value: string): string {
 	return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
-export function buildDistributePlanetCommand(base64Planet: string): string {
+export function buildDistributePlanetCommand(
+	base64Planet: string,
+	options: RemoteRootWriteCommandOptions = {},
+): string {
 	if (!/^[A-Za-z0-9+/=]+$/.test(base64Planet)) {
 		throw new Error("Invalid planet payload.");
 	}
-	return [
+	return appendOptionalRestart([
 		"sudo mkdir -p /var/lib/zerotier-one",
 		"if [ -f /var/lib/zerotier-one/planet ]; then sudo cp -n /var/lib/zerotier-one/planet /var/lib/zerotier-one/planet.ztnet.official.bak; fi",
 		`printf '%s' '${base64Planet}' | sudo base64 -d | sudo tee /var/lib/zerotier-one/planet >/dev/null`,
-		REMOTE_ROOT_COMMANDS.restartService,
-	].join(" && ");
+	], options);
 }
 
-export function buildRestoreOfficialPlanetCommand(): string {
-	return [
+export function buildRestoreOfficialPlanetCommand(
+	options: RemoteRootWriteCommandOptions = {},
+): string {
+	return appendOptionalRestart([
 		"if [ -f /var/lib/zerotier-one/planet.ztnet.official.bak ]; then sudo cp /var/lib/zerotier-one/planet.ztnet.official.bak /var/lib/zerotier-one/planet && echo __ZTNET_RESTORE_MODE__ && echo backup_restored; else sudo rm -f /var/lib/zerotier-one/planet && echo __ZTNET_RESTORE_MODE__ && echo custom_removed; fi",
-		REMOTE_ROOT_COMMANDS.restartService,
-	].join(" && ");
+	], options);
 }
 
 export function parseRestoreOfficialPlanetMode(

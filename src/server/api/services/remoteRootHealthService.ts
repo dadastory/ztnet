@@ -7,6 +7,7 @@ import {
 	runRemoteRootCommand,
 	type RemoteRootEndpointCandidate,
 	type RemoteRootConnection,
+	type RemoteRootDeploymentMode,
 } from "./remoteRootProvisioningService";
 
 export type RemoteRootHealthInput = {
@@ -30,6 +31,7 @@ export type RemoteRootHealthResult = {
 	selectedIps: string[];
 	endpointCandidates: RemoteRootEndpointCandidate[];
 	zerotierInstalled: boolean;
+	deploymentMode: RemoteRootDeploymentMode;
 	serviceStatus: "UNKNOWN" | "RUNNING" | "STOPPED" | "ERROR";
 	startupStatus: "UNKNOWN" | "ENABLED" | "DISABLED" | "ERROR";
 	secondaryPort: number | null;
@@ -112,6 +114,7 @@ export async function checkRemoteRootHealth(
 				selectedIps: configuredSelectedIps,
 				endpointCandidates: config.endpointCandidates,
 				zerotierInstalled: config.zerotierInstalled,
+				deploymentMode: config.deploymentMode,
 				serviceStatus: config.serviceStatus,
 				startupStatus: config.startupStatus,
 				secondaryPort: config.secondaryPort,
@@ -158,7 +161,7 @@ export async function checkRemoteRootHealth(
 			const selectedIps = configuredSelectedIps.length
 				? configuredSelectedIps
 				: compact([
-						pickDefaultEndpoint(endpointCandidates, ["PUBLIC_IP", "DNS", "SSH_HOST"]),
+						pickDefaultEndpoint(endpointCandidates, ["DNS", "SSH_HOST"]),
 					]);
 			const drift = selectedIps.find(
 				(selectedIp) => detectDnsDrift({ selectedIp, resolvedIps }).drifted,
@@ -191,6 +194,7 @@ export async function checkRemoteRootHealth(
 				selectedIps,
 				endpointCandidates,
 				zerotierInstalled: config.zerotierInstalled,
+				deploymentMode: config.deploymentMode,
 				serviceStatus: config.serviceStatus,
 				startupStatus: config.startupStatus,
 				secondaryPort: config.secondaryPort,
@@ -212,7 +216,7 @@ export async function checkRemoteRootHealth(
 
 		const selectedIps = configuredSelectedIps.length
 			? configuredSelectedIps
-			: compact([pickDefaultEndpoint(baseCandidates, ["PUBLIC_IP", "SSH_HOST"])]);
+			: compact([pickDefaultEndpoint(baseCandidates, ["SSH_HOST"])]);
 		const panelSummary = await checkSelectedPanelEndpoints({
 			selectedIps,
 			primaryPort: config.primaryPort,
@@ -239,6 +243,7 @@ export async function checkRemoteRootHealth(
 			selectedIps,
 			endpointCandidates: baseCandidates,
 			zerotierInstalled: config.zerotierInstalled,
+			deploymentMode: config.deploymentMode,
 			serviceStatus: config.serviceStatus,
 			startupStatus: config.startupStatus,
 			secondaryPort: config.secondaryPort,
@@ -270,6 +275,7 @@ export async function checkRemoteRootHealth(
 			selectedIps: normalizeSelectedIps(input.selectedIps, input.selectedIp),
 			endpointCandidates: [],
 			zerotierInstalled: false,
+			deploymentMode: "UNSUPPORTED",
 			serviceStatus: "UNKNOWN",
 			startupStatus: "UNKNOWN",
 			secondaryPort: null,

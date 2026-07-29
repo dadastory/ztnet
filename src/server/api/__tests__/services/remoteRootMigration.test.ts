@@ -69,4 +69,17 @@ describe("remote root database migration", () => {
 		expect(sql).toContain('ALTER TABLE "GlobalOptions"');
 		expect(sql).toContain('"planetDownloadAuthMode" TEXT NOT NULL DEFAULT');
 	});
+
+	it("adds deployment mode for safe remote command gating", () => {
+		const deploymentMigration = fs.readFileSync(
+			path.join(
+				process.cwd(),
+				"prisma/migrations/20260729000000_remote_root_deployment_mode/migration.sql",
+			),
+			"utf8",
+		);
+
+		expect(deploymentMigration).toContain('"deploymentMode"');
+		expect(deploymentMigration).toContain("UNSUPPORTED");
+	});
 });

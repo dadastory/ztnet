@@ -25,7 +25,11 @@ import {
 	enqueueRemoteRootHealthCheck,
 	runRemoteRootHealthCheckTask,
 } from "../services/remoteRootHealthTaskService";
-import { assertRemoteRootConfigEditable } from "../services/remoteRootConfigGuardService";
+import {
+	assertRemoteRootConfigEditable,
+	assertRemoteRootNativeCommandAllowed,
+	remoteRootRequiresManualRestart,
+} from "../services/remoteRootConfigGuardService";
 import { buildRemoteRootReadLogs } from "../services/remoteRootTaskLogService";
 import { throwError } from "~/server/helpers/errorHandler";
 import { ZT_FOLDER } from "~/utils/ztApi";
@@ -127,6 +131,7 @@ function nodeUpdateFromConfig(
 		linuxKernelMode: config.linuxKernelMode,
 		zerotierVersion: config.zerotierVersion,
 		zerotierInstalled: config.zerotierInstalled,
+		deploymentMode: config.deploymentMode,
 		serviceStatus: config.serviceStatus,
 		startupStatus: config.startupStatus,
 		endpointCandidates: config.endpointCandidates,
@@ -288,7 +293,8 @@ export const remoteRootRouter = createTRPCRouter({
 		.mutation(async ({ ctx, input }) => {
 			const task = await createTask(ctx, input.nodeId, "INSTALL_ZEROTIER");
 			try {
-				const { connection } = await getConnection(ctx, input.nodeId);
+				const { node, connection } = await getConnection(ctx, input.nodeId);
+				assertRemoteRootNativeCommandAllowed(node, "ZeroTier installation");
 				const install = await runRemoteRootCommand(
 					connection,
 					REMOTE_ROOT_COMMANDS.install,
@@ -322,7 +328,8 @@ export const remoteRootRouter = createTRPCRouter({
 		.mutation(async ({ ctx, input }) => {
 			const task = await createTask(ctx, input.nodeId, "UPGRADE_ZEROTIER");
 			try {
-				const { connection } = await getConnection(ctx, input.nodeId);
+				const { node, connection } = await getConnection(ctx, input.nodeId);
+				assertRemoteRootNativeCommandAllowed(node, "ZeroTier upgrade");
 				const result = await runRemoteRootCommand(
 					connection,
 					REMOTE_ROOT_COMMANDS.upgrade,
@@ -372,7 +379,8 @@ export const remoteRootRouter = createTRPCRouter({
 		.mutation(async ({ ctx, input }) => {
 			const task = await createTask(ctx, input.nodeId, "RESTART_ZEROTIER");
 			try {
-				const { connection } = await getConnection(ctx, input.nodeId);
+				const { node, connection } = await getConnection(ctx, input.nodeId);
+				assertRemoteRootNativeCommandAllowed(node, "ZeroTier restart");
 				const result = await runRemoteRootCommand(
 					connection,
 					REMOTE_ROOT_COMMANDS.restartService,
@@ -402,9 +410,12 @@ export const remoteRootRouter = createTRPCRouter({
 			try {
 				const { node, connection } = await getConnection(ctx, input.nodeId);
 				assertRemoteRootConfigEditable(node);
+				const requiresManualRestart = remoteRootRequiresManualRestart(node);
 				const result = await runRemoteRootCommand(
 					connection,
-					buildSaveRemoteRootConfigCommand(input),
+					buildSaveRemoteRootConfigCommand(input, {
+						restartService: !requiresManualRestart,
+					}),
 				);
 				const updated = await readAndPersistRemoteRoot(ctx, input.nodeId);
 				await finishTask(
@@ -414,7 +425,9 @@ export const remoteRootRouter = createTRPCRouter({
 					[
 						result.stderr,
 						...taskReadLogs(
-							"ZeroTier configuration saved and service restarted.",
+							requiresManualRestart
+								? "ZeroTier configuration saved. Restart the ZeroTier Docker container manually to apply it."
+								: "ZeroTier configuration saved and service restarted.",
 							updated,
 						),
 					].filter(Boolean),
@@ -435,10 +448,14 @@ export const remoteRootRouter = createTRPCRouter({
 		.mutation(async ({ ctx, input }) => {
 			const task = await createTask(ctx, input.nodeId, "CHANGE_PORT");
 			try {
-				const { connection } = await getConnection(ctx, input.nodeId);
+				const { node, connection } = await getConnection(ctx, input.nodeId);
+				assertRemoteRootConfigEditable(node);
+				const requiresManualRestart = remoteRootRequiresManualRestart(node);
 				const result = await runRemoteRootCommand(
 					connection,
-					buildChangeZerotierPortCommand(input.primaryPort),
+					buildChangeZerotierPortCommand(input.primaryPort, {
+						restartService: !requiresManualRestart,
+					}),
 				);
 				const updated = await readAndPersistRemoteRoot(ctx, input.nodeId);
 				await finishTask(
@@ -447,7 +464,12 @@ export const remoteRootRouter = createTRPCRouter({
 					"SUCCESS",
 					[
 						result.stderr,
-						...taskReadLogs("ZeroTier port changed and service restarted.", updated),
+						...taskReadLogs(
+							requiresManualRestart
+								? "ZeroTier port changed. Restart the ZeroTier Docker container manually to apply it."
+								: "ZeroTier port changed and service restarted.",
+							updated,
+						),
 					].filter(Boolean),
 				);
 				return updated;
@@ -486,10 +508,14 @@ export const remoteRootRouter = createTRPCRouter({
 			try {
 				const planetPath = getLocalPlanetPath();
 				const planetBase64 = fs.readFileSync(planetPath).toString("base64");
-				const { connection } = await getConnection(ctx, input.nodeId);
+				const { node, connection } = await getConnection(ctx, input.nodeId);
+				assertRemoteRootConfigEditable(node);
+				const requiresManualRestart = remoteRootRequiresManualRestart(node);
 				const result = await runRemoteRootCommand(
 					connection,
-					buildDistributePlanetCommand(planetBase64),
+					buildDistributePlanetCommand(planetBase64, {
+						restartService: !requiresManualRestart,
+					}),
 				);
 				await ctx.prisma.remoteRootNode.update({
 					where: { id: input.nodeId },
@@ -499,7 +525,12 @@ export const remoteRootRouter = createTRPCRouter({
 					ctx,
 					task.id,
 					"SUCCESS",
-					[result.stderr, "Planet distributed. Refreshing status…"].filter(Boolean),
+					[
+						result.stderr,
+						requiresManualRestart
+							? "Planet distributed. Restart the ZeroTier Docker container manually to apply it."
+							: "Planet distributed. Refreshing status…",
+					].filter(Boolean),
 				);
 				// Reading the remote config back is a second ~30s SSH round trip.
 				// Doing it inline pushes the request past a reverse proxy's 60s
@@ -530,10 +561,14 @@ export const remoteRootRouter = createTRPCRouter({
 		.mutation(async ({ ctx, input }) => {
 			const task = await createTask(ctx, input.nodeId, "RESTORE_OFFICIAL_PLANET");
 			try {
-				const { connection } = await getConnection(ctx, input.nodeId);
+				const { node, connection } = await getConnection(ctx, input.nodeId);
+				assertRemoteRootConfigEditable(node);
+				const requiresManualRestart = remoteRootRequiresManualRestart(node);
 				const result = await runRemoteRootCommand(
 					connection,
-					buildRestoreOfficialPlanetCommand(),
+					buildRestoreOfficialPlanetCommand({
+						restartService: !requiresManualRestart,
+					}),
 				);
 				const restoreMode = parseRestoreOfficialPlanetMode(result.stdout);
 				const updated = await readAndPersistRemoteRoot(ctx, input.nodeId, restoreMode);
@@ -543,7 +578,12 @@ export const remoteRootRouter = createTRPCRouter({
 					"SUCCESS",
 					[
 						result.stderr,
-						...taskReadLogs("Remote root restored to official planet.", updated),
+						...taskReadLogs(
+							requiresManualRestart
+								? "Remote root restored to the official planet. Restart the ZeroTier Docker container manually to apply it."
+								: "Remote root restored to official planet.",
+							updated,
+						),
 					].filter(Boolean),
 				);
 				return updated;

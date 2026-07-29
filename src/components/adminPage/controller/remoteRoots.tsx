@@ -293,16 +293,24 @@ const RemoteRoots = () => {
 	});
 
 	const saveRemoteConfig = api.admin.remoteRoots.saveRemoteConfig.useMutation({
-		onSuccess: async () => {
-			toast.success(t("controller.remoteRoots.toast.configSaved"));
+		onSuccess: async (root) => {
+			toast.success(
+				root.deploymentMode === "DOCKER"
+					? t("controller.localConfig.restartHint")
+					: t("controller.remoteRoots.toast.configSaved"),
+			);
 			await invalidate();
 		},
 		onError: (error) => toast.error(error.message),
 	});
 
 	const changeZerotierPort = api.admin.remoteRoots.changeZerotierPort.useMutation({
-		onSuccess: async () => {
-			toast.success(t("controller.remoteRoots.toast.portChanged"));
+		onSuccess: async (root) => {
+			toast.success(
+				root.deploymentMode === "DOCKER"
+					? t("controller.localConfig.restartHint")
+					: t("controller.remoteRoots.toast.portChanged"),
+			);
 			await invalidate();
 		},
 		onError: (error) => toast.error(error.message),
@@ -623,9 +631,13 @@ const RemoteRoots = () => {
 				? t("controller.remoteRoots.form.sshFailedReadRequired")
 				: !selectedRoot.zerotierInstalled
 					? t("controller.remoteRoots.form.zerotierInstallRequired")
+					: selectedRoot.deploymentMode === "UNSUPPORTED"
+						? "The remote deployment is not supported for automatic changes."
 					: null
 		: null;
 	const canEditRemoteConfig = Boolean(selectedRoot && !remoteConfigDisabledReason);
+	const isNativeDeployment = selectedRoot?.deploymentMode === "NATIVE";
+	const requiresDockerRestart = selectedRoot?.deploymentMode === "DOCKER";
 	const busy =
 		testSsh.isLoading ||
 		installZerotier.isLoading ||
@@ -986,6 +998,11 @@ const RemoteRoots = () => {
 											{t("controller.remoteRoots.form.configSnapshotHint")}
 										</p>
 									)}
+									{requiresDockerRestart ? (
+										<div className="alert alert-info py-2 text-sm">
+											<span>{t("controller.localConfig.restartHint")}</span>
+										</div>
+									) : null}
 									<div className="grid gap-3 sm:grid-cols-2">
 										<label className="form-control">
 											<span className="label-text">
@@ -1100,7 +1117,7 @@ const RemoteRoots = () => {
 											type="button"
 											className="btn btn-sm"
 											onClick={() => installZerotier.mutate({ nodeId: selectedRoot.id })}
-											disabled={installZerotier.isLoading}
+											disabled={installZerotier.isLoading || !isNativeDeployment}
 										>
 											{installZerotier.isLoading ? (
 												<span className="loading loading-spinner loading-xs" />
@@ -1111,7 +1128,7 @@ const RemoteRoots = () => {
 											type="button"
 											className="btn btn-sm"
 											onClick={() => upgradeZerotier.mutate({ nodeId: selectedRoot.id })}
-											disabled={upgradeZerotier.isLoading}
+											disabled={upgradeZerotier.isLoading || !isNativeDeployment}
 										>
 											{upgradeZerotier.isLoading ? (
 												<span className="loading loading-spinner loading-xs" />
@@ -1122,9 +1139,7 @@ const RemoteRoots = () => {
 											type="button"
 											className="btn btn-sm"
 											onClick={() => restartZerotier.mutate({ nodeId: selectedRoot.id })}
-											disabled={
-												restartZerotier.isLoading || !selectedRoot.zerotierInstalled
-											}
+											disabled={restartZerotier.isLoading || !isNativeDeployment}
 										>
 											{restartZerotier.isLoading ? (
 												<span className="loading loading-spinner loading-xs" />

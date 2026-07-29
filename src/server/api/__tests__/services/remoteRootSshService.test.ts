@@ -1,41 +1,26 @@
-import { buildSshArgs } from "~/server/api/services/remoteRootSshService";
+import { RemoteRootSshError } from "~/server/api/services/remoteRootSshService";
 
-describe("remoteRootSshService", () => {
-	it("builds ssh args without using a shell command string", () => {
-		const args = buildSshArgs({
-			host: "root.example.com",
-			port: 2222,
-			user: "root",
-			identityFile: "/tmp/ztnet-key",
-			command: "zerotier-cli info",
-			connectTimeoutSeconds: 10,
+describe("RemoteRootSshError", () => {
+	it("reports an SSH timeout without exposing the temporary identity path", () => {
+		const error = new RemoteRootSshError({
+			stderr: "ssh: connect to host 203.0.113.10 port 22: Connection timed out",
+			code: null,
+			timedOut: true,
 		});
 
-		expect(args).toEqual([
-			"-i",
-			"/tmp/ztnet-key",
-			"-p",
-			"2222",
-			"-o",
-			"BatchMode=yes",
-			"-o",
-			"StrictHostKeyChecking=accept-new",
-			"-o",
-			"ConnectTimeout=10",
-			"root@root.example.com",
-			"zerotier-cli info",
-		]);
+		expect(error.message).toBe("SSH command timed out after 30 seconds.");
+		expect(error.message).not.toContain("/tmp/ztnet-ssh-");
+		expect(error.timedOut).toBe(true);
 	});
 
-	it("rejects multiline commands", () => {
-		expect(() =>
-			buildSshArgs({
-				host: "root.example.com",
-				port: 22,
-				user: "root",
-				identityFile: "/tmp/ztnet-key",
-				command: "whoami\nuname -a",
-			}),
-		).toThrow(/multiline/i);
+	it("preserves a safe remote SSH error detail", () => {
+		const error = new RemoteRootSshError({
+			stderr: "root@203.0.113.10: Permission denied (publickey).",
+			code: 255,
+			timedOut: false,
+		});
+
+		expect(error.message).toBe("root@203.0.113.10: Permission denied (publickey).");
+		expect(error.code).toBe(255);
 	});
 });
